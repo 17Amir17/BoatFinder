@@ -24,7 +24,7 @@ export default async function handler(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  console.log('🚀 Starting hourly boat search...');
+  console.log('🚀 Starting daily boat search...');
   console.log(`Time: ${new Date().toISOString()}`);
 
   try {
