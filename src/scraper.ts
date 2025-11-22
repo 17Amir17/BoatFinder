@@ -10,14 +10,14 @@ const api = new CrawlingAPI({ token: process.env.CRAWLBASE_TOKEN || '' });
  * @param listingId - The marketplace listing ID
  * @returns The description text or undefined if not found
  */
-async function fetchListingDescription(listingId: string): Promise<string | undefined> {
+export async function fetchListingDescription(listingId: string): Promise<string | undefined> {
   const url = `https://www.facebook.com/marketplace/item/${listingId}`;
 
   try {
     const response = await api.get(url, {
       ajax_wait: true,
-      page_wait: 15000,  // 15 seconds for page to fully load
-      timeout: 120000    // 2 minute timeout for API call
+      page_wait: 5000,  // 5 seconds
+      timeout: 30000    // 30 second timeout (faster)
     });
 
     if (response.statusCode !== 200) {

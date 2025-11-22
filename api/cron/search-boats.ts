@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { searchMarketplace } from "../../src/scraper";
+import { searchMarketplace, fetchListingDescription } from "../../src/scraper";
 import { getExistingListingIds, insertListing } from "../../lib/db";
 import {
   isInPriceRange,
@@ -99,61 +99,110 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // PROCESS ALL NEW LISTINGS IN PARALLEL
-    console.log(
-      `\n⚡ Processing ${allNewListings.length} NEW listings in PARALLEL...\n`
+    // OPTIMIZATION: Only fetch descriptions for listings in price range
+    const inPriceRangeListings = allNewListings.filter(l =>
+      isInPriceRange(l, DEFAULT_PRICE_RANGE.min, DEFAULT_PRICE_RANGE.max)
     );
 
-    await Promise.all(
-      allNewListings.map(async (listing, index) => {
-        console.log(
-          `  [${index + 1}/${allNewListings.length}] ${listing.title}`
-        );
+    console.log(
+      `\n⚡ ${allNewListings.length} new listings (${inPriceRangeListings.length} in price range)`
+    );
+    console.log(`   Fetching descriptions for ${inPriceRangeListings.length} in PARALLEL...\n`
+    );
 
+    const descriptions = await Promise.all(
+      inPriceRangeListings.map(async (listing, index) => {
+        console.log(`  [${index + 1}/${inPriceRangeListings.length}] ${listing.title}`);
         try {
-          // Fetch description
-          const detailedResults = await searchMarketplace(
-            {
-              query: listingQueryMap.get(listing.id) || "",
-              location: SEARCH_LOCATION,
-              radius: SEARCH_RADIUS,
-            },
-            { fetchDescriptions: true }
-          );
-
-          const detailed = detailedResults.find((l) => l.id === listing.id);
-          if (detailed?.description) {
-            listing.description = detailed.description;
-          }
-
-          // Run LLM analysis
-          const analysis = await analyzeListingWithLLM(listing);
-          listing.hasParking = analysis.hasParking;
-          listing.llm_rating = analysis.rating;
-          listing.llm_reason = analysis.reason;
-
-          console.log(
-            `     ✅ ${analysis.rating}/10, Parking: ${analysis.hasParking}`
-          );
-
-          // Insert into database
-          await insertListing(listing, listingQueryMap.get(listing.id) || "");
-
-          // Send Discord notification if in price range
-          if (
-            isInPriceRange(
-              listing,
-              DEFAULT_PRICE_RANGE.min,
-              DEFAULT_PRICE_RANGE.max
-            )
-          ) {
-            await sendDiscordNotification(listing);
-          }
+          const description = await fetchListingDescription(listing.id);
+          return { id: listing.id, description };
         } catch (error: any) {
           console.error(`     ❌ Error: ${error?.message}`);
+          return { id: listing.id, description: undefined };
         }
       })
     );
+
+    // Add descriptions to listings
+    const descriptionMap = new Map(descriptions.map(d => [d.id, d.description]));
+    allNewListings.forEach(listing => {
+      listing.description = descriptionMap.get(listing.id);
+    });
+
+    console.log(`✅ Fetched ${descriptions.filter(d => d.description).length}/${inPriceRangeListings.length} descriptions`);
+
+    // STEP 2: RUN LLM ANALYSIS ONLY ON PRICE-RANGE LISTINGS IN PARALLEL
+    console.log(
+      `\n⚡ Running LLM analysis on ${inPriceRangeListings.length} listings in PARALLEL...\n`
+    );
+
+    const analyses = await Promise.all(
+      inPriceRangeListings.map(async (listing, index) => {
+        console.log(`  [${index + 1}/${inPriceRangeListings.length}] ${listing.title}`);
+        try {
+          const analysis = await analyzeListingWithLLM(listing);
+          console.log(`     ✅ ${analysis.rating}/10, Parking: ${analysis.hasParking}`);
+          return { id: listing.id, analysis };
+        } catch (error: any) {
+          console.error(`     ❌ Error: ${error?.message}`);
+          return {
+            id: listing.id,
+            analysis: { hasParking: false, rating: 0, reason: 'Analysis failed' }
+          };
+        }
+      })
+    );
+
+    // Add LLM results to in-range listings
+    const analysisMap = new Map(analyses.map(a => [a.id, a.analysis]));
+    inPriceRangeListings.forEach(listing => {
+      const analysis = analysisMap.get(listing.id);
+      if (analysis) {
+        listing.hasParking = analysis.hasParking;
+        listing.llm_rating = analysis.rating;
+        listing.llm_reason = analysis.reason;
+      }
+    });
+
+    console.log(`✅ Completed ${inPriceRangeListings.length} LLM analyses`);
+
+    // STEP 3: SAVE ALL TO DATABASE IN PARALLEL
+    console.log(
+      `\n⚡ Saving ${allNewListings.length} listings to DB in PARALLEL...\n`
+    );
+
+    await Promise.all(
+      allNewListings.map(async (listing) => {
+        try {
+          await insertListing(listing, listingQueryMap.get(listing.id) || "");
+        } catch (error: any) {
+          console.error(`     ❌ DB Error for ${listing.title}: ${error?.message}`);
+        }
+      })
+    );
+
+    console.log(`✅ Saved all listings to database`);
+
+    // STEP 4: SEND DISCORD NOTIFICATIONS IN PARALLEL
+    const notificationsToSend = allNewListings.filter(listing =>
+      isInPriceRange(listing, DEFAULT_PRICE_RANGE.min, DEFAULT_PRICE_RANGE.max)
+    );
+
+    if (notificationsToSend.length > 0) {
+      console.log(
+        `\n⚡ Sending ${notificationsToSend.length} Discord notifications in PARALLEL...\n`
+      );
+
+      await Promise.all(
+        notificationsToSend.map(async (listing) => {
+          try {
+            await sendDiscordNotification(listing);
+          } catch (error: any) {
+            console.error(`     ❌ Discord error: ${error?.message}`);
+          }
+        })
+      );
+    }
 
     console.log(`\n✅ All listings processed!`);
 
