@@ -138,6 +138,10 @@ export default async function handler(
         console.log(`   New: ${newCount}`);
         console.log(`   In price range (${formatPrice(DEFAULT_PRICE_RANGE.min)}-${formatPrice(DEFAULT_PRICE_RANGE.max)}): ${inRangeCount}`);
 
+        if (inRangeCount > 0) {
+          console.log(`   📬 Notified: ${notifiedListings.join(', ')}`);
+        }
+
       } catch (error: any) {
         console.error(`❌ Error searching for "${query}":`, error?.message || error);
 
@@ -154,7 +158,7 @@ export default async function handler(
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
-    console.log('\n✅ Hourly search completed!');
+    console.log('\n✅ Daily search completed!');
 
     return res.status(200).json({
       success: true,

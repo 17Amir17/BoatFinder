@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BoatFinder</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 { color: #0070f3; }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .status { color: #0070f3; }
+    </style>
+</head>
+<body>
+    <h1>🚤 BoatFinder</h1>
+    <p>Automated Facebook Marketplace boat scraper for Israel</p>
+
+    <h2>Status</h2>
+    <p class="status">✅ System deployed and running</p>
+
+    <h2>Features</h2>
+    <ul>
+        <li>Daily automated searches for boats in Israel</li>
+        <li>LLM analysis for boat specifications</li>
+        <li>PostgreSQL storage</li>
+        <li>Price range filtering (₪10,000 - ₪100,000)</li>
+    </ul>
+
+    <h2>Cron Schedule</h2>
+    <p>Searches run daily at <strong>8:00 AM UTC</strong> (10-11 AM Israel time)</p>
+
+    <h2>API Endpoints</h2>
+    <ul>
+        <li><code>GET /api/cron/search-boats</code> - Cron endpoint (requires Bearer token)</li>
+    </ul>
+
+    <p style="color: #666; margin-top: 40px;">
+        Powered by Crawlbase + Anthropic Claude + Vercel
+    </p>
+</body>
+</html>

@@ -63,9 +63,11 @@ cat lib/schema.sql | vercel postgres execute
 
 Cron jobs are automatically enabled based on `vercel.json`.
 
-**Schedule:** Every hour at minute 0 (`0 * * * *`)
+**Schedule:** Daily at 8 AM UTC (`0 8 * * *`) = 10-11 AM Israel time
 
 **Endpoint:** `/api/cron/search-boats`
+
+**Note:** Vercel Hobby plan only allows daily cron jobs. Upgrade to Pro for hourly.
 
 ## Monitoring
 
