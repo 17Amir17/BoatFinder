@@ -30,6 +30,7 @@
     "@anthropic-ai/sdk": "^0.70.1",
     "@vercel/postgres": "^0.10.0",
     "crawlbase": "^1.0.2",
-    "dotenv": "^17.2.3"
+    "dotenv": "^17.2.3",
+    "vercel": "^48.10.10"
   }
 }
