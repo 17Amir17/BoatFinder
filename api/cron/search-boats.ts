@@ -5,7 +5,7 @@ import { isInPriceRange, DEFAULT_PRICE_RANGE, formatPrice } from '../../lib/filt
 import { analyzeListingWithLLM } from '../../lib/llm-analysis';
 import { MarketplaceListing } from '../../src/types';
 
-// Search queries to run every hour
+// Search queries to run daily (8 AM UTC = 10/11 AM Israel time depending on DST)
 const SEARCH_QUERIES = [
   { query: 'סירה', description: 'boats' },
   { query: 'סירת דייג', description: 'fishing boat' }
