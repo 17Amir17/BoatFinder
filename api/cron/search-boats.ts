@@ -257,9 +257,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
  * Send Discord notification
  */
 async function sendDiscordNotification(listing: any): Promise<void> {
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL || "https://discord.com/api/webhooks/1441885781441380352/zWBUUyCUEkC3QbDkGdCHVaz-cyJ2AOwoc4A8JdSIDGZN1W5lNEsKB1vPfpm3nDaWt5r-";
+  // Hardcoded - ignore env var
+  const webhookUrl = "https://discord.com/api/webhooks/1441885781441380352/zWBUUyCUEkC3QbDkGdCHVaz-cyJ2AOwoc4A8JdSIDGZN1W5lNEsKB1vPfpm3nDaWt5r-";
 
-  console.log(`     🔗 Webhook URL: ${webhookUrl.substring(0, 50)}...`);
+  console.log(`     🔗 Sending Discord notification...`);
 
   try {
     const embed = {
