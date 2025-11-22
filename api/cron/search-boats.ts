@@ -190,18 +190,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (notificationsToSend.length > 0) {
       console.log(
-        `\n⚡ Sending ${notificationsToSend.length} Discord notifications in PARALLEL...\n`
+        `\n📬 Sending ${notificationsToSend.length} Discord notifications (with delays)...\n`
       );
 
-      await Promise.all(
-        notificationsToSend.map(async (listing) => {
-          try {
-            await sendDiscordNotification(listing);
-          } catch (error: any) {
-            console.error(`     ❌ Discord error: ${error?.message}`);
+      // Send with small delays to avoid rate limiting
+      for (let i = 0; i < notificationsToSend.length; i++) {
+        const listing = notificationsToSend[i];
+        console.log(`  [${i + 1}/${notificationsToSend.length}] Sending: ${listing.title}`);
+
+        try {
+          await sendDiscordNotification(listing);
+
+          // Add delay between notifications to avoid Discord rate limit
+          if (i < notificationsToSend.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
-        })
-      );
+        } catch (error: any) {
+          console.error(`     ❌ Discord error: ${error?.message}`);
+        }
+      }
     }
 
     console.log(`\n✅ All listings processed!`);
@@ -250,13 +257,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
  * Send Discord notification
  */
 async function sendDiscordNotification(listing: any): Promise<void> {
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  if (!webhookUrl) {
-    console.log(`     📬 No webhook URL, skipping Discord notification`);
-    return;
-  }
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL || "https://discord.com/api/webhooks/1441885781441380352/zWBUUyCUEkC3QbDkGdCHVaz-cyJ2AOwoc4A8JdSIDGZN1W5lNEsKB1vPfpm3nDaWt5r-";
 
-  console.log(`     🔗 Webhook URL exists: ${webhookUrl.substring(0, 50)}...`);
+  console.log(`     🔗 Webhook URL: ${webhookUrl.substring(0, 50)}...`);
 
   try {
     const embed = {
