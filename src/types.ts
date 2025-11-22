@@ -13,6 +13,7 @@ export interface MarketplaceListing {
   is_pending?: boolean;
   category_id?: string;
   subtitle?: string;
+  description?: string;
 }
 
 export interface SearchParams {
@@ -24,4 +25,5 @@ export interface SearchParams {
 export interface SearchOptions {
   ajax_wait?: boolean;
   page_wait?: number;
+  fetchDescriptions?: boolean;  // If true, fetches description from each item page (slower)
 }
