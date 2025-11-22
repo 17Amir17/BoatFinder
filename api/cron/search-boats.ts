@@ -256,6 +256,8 @@ async function sendDiscordNotification(listing: any): Promise<void> {
     return;
   }
 
+  console.log(`     🔗 Webhook URL exists: ${webhookUrl.substring(0, 50)}...`);
+
   try {
     const embed = {
       title: listing.title,
@@ -291,13 +293,18 @@ async function sendDiscordNotification(listing: any): Promise<void> {
       });
     }
 
-    await fetch(webhookUrl, {
+    const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ embeds: [embed] }),
     });
 
-    console.log(`     📬 Discord notification sent!`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`     ❌ Discord error ${response.status}:`, errorText);
+    } else {
+      console.log(`     📬 Discord notification sent!`);
+    }
   } catch (error: any) {
     console.error(`     ❌ Discord error: ${error?.message}`);
   }
