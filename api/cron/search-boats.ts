@@ -12,6 +12,7 @@ import { analyzeListingWithLLM } from "../../lib/llm-analysis";
 const SEARCH_QUERIES = [
   { query: "סירה", description: "boats" },
   { query: "סירת דייג", description: "fishing boat" },
+  { query: "עוצמה א", description: "power A" },
 ];
 
 const SEARCH_LOCATION = "telaviv";
@@ -29,7 +30,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // RUN ALL SEARCHES IN PARALLEL
-    console.log(`\n⚡ Running ${SEARCH_QUERIES.length} searches in PARALLEL...\n`);
+    console.log(
+      `\n⚡ Running ${SEARCH_QUERIES.length} searches in PARALLEL...\n`
+    );
 
     const searchResults = await Promise.all(
       SEARCH_QUERIES.map(async ({ query, description }) => {
@@ -103,7 +106,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await Promise.all(
       allNewListings.map(async (listing, index) => {
-        console.log(`  [${index + 1}/${allNewListings.length}] ${listing.title}`);
+        console.log(
+          `  [${index + 1}/${allNewListings.length}] ${listing.title}`
+        );
 
         try {
           // Fetch description
@@ -171,7 +176,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Log summary
     for (const r of results) {
       console.log(`\n📊 "${r.query}":`);
-      console.log(`   Total: ${r.total}, New: ${r.new}, Notified: ${r.inPriceRange}`);
+      console.log(
+        `   Total: ${r.total}, New: ${r.new}, Notified: ${r.inPriceRange}`
+      );
     }
 
     return res.status(200).json({
@@ -212,7 +219,11 @@ async function sendDiscordNotification(listing: any): Promise<void> {
           value: `${listing.location.city}, ${listing.location.state}`,
           inline: true,
         },
-        { name: "⭐ LLM Rating", value: `${listing.llm_rating}/10`, inline: true },
+        {
+          name: "⭐ LLM Rating",
+          value: `${listing.llm_rating}/10`,
+          inline: true,
+        },
         {
           name: "🅿️ Parking",
           value: listing.hasParking ? "✅ Yes" : "❌ No",

@@ -106,12 +106,6 @@ export async function searchMarketplace(
 
     const html = response.body?.toString() || '';
 
-    // Save HTML for debugging
-    const fs = require('fs');
-    const filename = `debug_${location?.replace(/\s+/g, '_') || 'global'}_${query.replace(/\s+/g, '_')}.html`;
-    fs.writeFileSync(filename, html);
-    console.log(`💾 Saved HTML to: ${filename}`);
-
     const listings = parseMarketplaceListings(html);
 
     console.log(`✅ Found ${listings.length} listings`);
