@@ -1,9 +1,7 @@
-import { createClient } from '@vercel/postgres';
+import { PrismaClient } from '@prisma/client';
 import { MarketplaceListing } from '../src/types';
 
-const client = createClient({
-  connectionString: process.env.POSTGRES_URL
-});
+const prisma = new PrismaClient();
 
 export interface DBListing extends MarketplaceListing {
   search_query?: string;
@@ -16,10 +14,10 @@ export interface DBListing extends MarketplaceListing {
  * Check if a listing already exists in the database
  */
 export async function listingExists(id: string): Promise<boolean> {
-  const result = await client.sql`
-    SELECT id FROM listings WHERE id = ${id} LIMIT 1
-  `;
-  return (result.rowCount || 0) > 0;
+  const listing = await prisma.listing.findUnique({
+    where: { id }
+  });
+  return listing !== null;
 }
 
 /**
@@ -29,80 +27,73 @@ export async function insertListing(
   listing: MarketplaceListing,
   searchQuery: string
 ): Promise<void> {
-  await client.connect();
   const priceNumeric = parsePrice(listing.price);
 
-  await client.sql`
-    INSERT INTO listings (
-      id, title, price, price_numeric, strikethrough_price,
-      city, state, url, delivery_types,
-      is_sold, is_pending, category_id, subtitle, description,
-      has_parking, llm_rating, llm_reason,
-      search_query, created_at, updated_at
-    ) VALUES (
-      ${listing.id},
-      ${listing.title},
-      ${listing.price},
-      ${priceNumeric},
-      ${listing.strikethrough_price || null},
-      ${listing.location.city},
-      ${listing.location.state},
-      ${listing.url},
-      ${listing.delivery_types ? JSON.stringify(listing.delivery_types) : null},
-      ${listing.is_sold || false},
-      ${listing.is_pending || false},
-      ${listing.category_id || null},
-      ${listing.subtitle || null},
-      ${listing.description || null},
-      ${listing.hasParking || null},
-      ${listing.llm_rating || null},
-      ${listing.llm_reason || null},
-      ${searchQuery},
-      NOW(),
-      NOW()
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      updated_at = NOW(),
-      is_sold = EXCLUDED.is_sold,
-      is_pending = EXCLUDED.is_pending,
-      description = COALESCE(EXCLUDED.description, listings.description),
-      has_parking = COALESCE(EXCLUDED.has_parking, listings.has_parking),
-      llm_rating = COALESCE(EXCLUDED.llm_rating, listings.llm_rating),
-      llm_reason = COALESCE(EXCLUDED.llm_reason, listings.llm_reason)
-  `;
+  await prisma.listing.upsert({
+    where: { id: listing.id },
+    update: {
+      updatedAt: new Date(),
+      isSold: listing.is_sold || false,
+      isPending: listing.is_pending || false,
+      description: listing.description || undefined,
+      hasParking: listing.hasParking || undefined,
+      llmRating: listing.llm_rating || undefined,
+      llmReason: listing.llm_reason || undefined
+    },
+    create: {
+      id: listing.id,
+      title: listing.title,
+      price: listing.price,
+      priceNumeric,
+      strikethroughPrice: listing.strikethrough_price,
+      city: listing.location.city,
+      state: listing.location.state,
+      url: listing.url,
+      deliveryTypes: listing.delivery_types ? JSON.stringify(listing.delivery_types) : undefined,
+      isSold: listing.is_sold || false,
+      isPending: listing.is_pending || false,
+      categoryId: listing.category_id,
+      subtitle: listing.subtitle,
+      description: listing.description,
+      hasParking: listing.hasParking,
+      llmRating: listing.llm_rating,
+      llmReason: listing.llm_reason,
+      searchQuery
+    }
+  });
 }
 
 /**
  * Get all listings from the database
  */
 export async function getAllListings(): Promise<DBListing[]> {
-  const result = await client.sql`
-    SELECT * FROM listings ORDER BY created_at DESC
-  `;
+  const listings = await prisma.listing.findMany({
+    orderBy: { createdAt: 'desc' }
+  });
 
-  return result.rows.map(row => ({
+  return listings.map(row => ({
     id: row.id,
     title: row.title,
     price: row.price,
-    strikethrough_price: row.strikethrough_price,
+    strikethrough_price: row.strikethroughPrice || undefined,
     location: {
       city: row.city,
       state: row.state
     },
     url: row.url,
-    delivery_types: row.delivery_types ? JSON.parse(row.delivery_types) : undefined,
-    is_sold: row.is_sold,
-    is_pending: row.is_pending,
-    category_id: row.category_id,
-    subtitle: row.subtitle,
-    description: row.description,
-    hasParking: row.has_parking,
-    llm_rating: row.llm_rating,
-    llm_reason: row.llm_reason,
-    search_query: row.search_query,
-    price_numeric: row.price_numeric,
-    created_at: row.created_at,
-    updated_at: row.updated_at
+    delivery_types: row.deliveryTypes ? JSON.parse(row.deliveryTypes) : undefined,
+    is_sold: row.isSold,
+    is_pending: row.isPending,
+    category_id: row.categoryId || undefined,
+    subtitle: row.subtitle || undefined,
+    description: row.description || undefined,
+    hasParking: row.hasParking || undefined,
+    llm_rating: row.llmRating || undefined,
+    llm_reason: row.llmReason || undefined,
+    search_query: row.searchQuery || undefined,
+    price_numeric: row.priceNumeric || undefined,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt
   }));
 }
 
@@ -113,36 +104,39 @@ export async function getListingsByPriceRange(
   minPrice: number,
   maxPrice: number
 ): Promise<DBListing[]> {
-  const result = await client.sql`
-    SELECT * FROM listings
-    WHERE price_numeric >= ${minPrice}
-      AND price_numeric <= ${maxPrice}
-    ORDER BY created_at DESC
-  `;
+  const listings = await prisma.listing.findMany({
+    where: {
+      priceNumeric: {
+        gte: minPrice,
+        lte: maxPrice
+      }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
 
-  return result.rows.map(row => ({
+  return listings.map(row => ({
     id: row.id,
     title: row.title,
     price: row.price,
-    strikethrough_price: row.strikethrough_price,
+    strikethrough_price: row.strikethroughPrice || undefined,
     location: {
       city: row.city,
       state: row.state
     },
     url: row.url,
-    delivery_types: row.delivery_types ? JSON.parse(row.delivery_types) : undefined,
-    is_sold: row.is_sold,
-    is_pending: row.is_pending,
-    category_id: row.category_id,
-    subtitle: row.subtitle,
-    description: row.description,
-    hasParking: row.has_parking,
-    llm_rating: row.llm_rating,
-    llm_reason: row.llm_reason,
-    search_query: row.search_query,
-    price_numeric: row.price_numeric,
-    created_at: row.created_at,
-    updated_at: row.updated_at
+    delivery_types: row.deliveryTypes ? JSON.parse(row.deliveryTypes) : undefined,
+    is_sold: row.isSold,
+    is_pending: row.isPending,
+    category_id: row.categoryId || undefined,
+    subtitle: row.subtitle || undefined,
+    description: row.description || undefined,
+    hasParking: row.hasParking || undefined,
+    llm_rating: row.llmRating || undefined,
+    llm_reason: row.llmReason || undefined,
+    search_query: row.searchQuery || undefined,
+    price_numeric: row.priceNumeric || undefined,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt
   }));
 }
 
@@ -150,13 +144,8 @@ export async function getListingsByPriceRange(
  * Parse price string to number (handles ₪, $, commas, etc.)
  */
 function parsePrice(priceStr: string): number | null {
-  // Remove currency symbols and commas
   const cleaned = priceStr.replace(/[₪$,]/g, '').trim();
-
-  // Parse to number
   const num = parseFloat(cleaned);
-
-  // Return null if invalid
   return isNaN(num) ? null : Math.floor(num);
 }
 
@@ -164,40 +153,7 @@ function parsePrice(priceStr: string): number | null {
  * Initialize database (create tables if they don't exist)
  */
 export async function initializeDatabase(): Promise<void> {
-  await client.sql`
-    CREATE TABLE IF NOT EXISTS listings (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      price TEXT NOT NULL,
-      price_numeric INTEGER,
-      strikethrough_price TEXT,
-      city TEXT NOT NULL,
-      state TEXT NOT NULL,
-      url TEXT NOT NULL,
-      delivery_types TEXT,
-      is_sold BOOLEAN DEFAULT FALSE,
-      is_pending BOOLEAN DEFAULT FALSE,
-      category_id TEXT,
-      subtitle TEXT,
-      description TEXT,
-      has_parking BOOLEAN,
-      llm_rating INTEGER,
-      llm_reason TEXT,
-      search_query TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `;
-
-  await client.sql`
-    CREATE INDEX IF NOT EXISTS idx_created_at ON listings(created_at DESC)
-  `;
-
-  await client.sql`
-    CREATE INDEX IF NOT EXISTS idx_price_numeric ON listings(price_numeric)
-  `;
-
-  await client.sql`
-    CREATE INDEX IF NOT EXISTS idx_is_sold ON listings(is_sold)
-  `;
+  // With Prisma, tables are created via migration
+  // This function is now a no-op, but kept for compatibility
+  console.log('Database schema is managed by Prisma migrations');
 }

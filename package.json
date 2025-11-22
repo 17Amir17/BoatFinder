@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx src/poc.ts",
     "test": "tsx src/test.ts",
-    "build": "tsc"
+    "build": "prisma generate && tsc",
+    "postinstall": "prisma generate"
   },
   "repository": {
     "type": "git",
@@ -28,9 +29,11 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.1",
+    "@prisma/client": "^5.22.0",
     "@vercel/postgres": "^0.10.0",
     "crawlbase": "^1.0.2",
     "dotenv": "^17.2.3",
+    "prisma": "^5.22.0",
     "vercel": "^48.10.10"
   }
 }

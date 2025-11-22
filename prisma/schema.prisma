@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("PRISMA_DATABASE_URL")
+}
+
+model Listing {
+  id                  String    @id
+  title               String
+  price               String
+  priceNumeric        Int?      @map("price_numeric")
+  strikethroughPrice  String?   @map("strikethrough_price")
+  city                String
+  state               String
+  url                 String
+  deliveryTypes       String?   @map("delivery_types")
+  isSold              Boolean   @default(false) @map("is_sold")
+  isPending           Boolean   @default(false) @map("is_pending")
+  categoryId          String?   @map("category_id")
+  subtitle            String?
+  description         String?
+  hasParking          Boolean?  @map("has_parking")
+  llmRating           Int?      @map("llm_rating")
+  llmReason           String?   @map("llm_reason")
+  searchQuery         String?   @map("search_query")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  @@index([createdAt])
+  @@index([priceNumeric])
+  @@index([isSold])
+  @@map("listings")
+}
