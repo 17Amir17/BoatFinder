@@ -1,206 +1,244 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { searchMarketplace } from '../../src/scraper';
-import { listingExists, insertListing, initializeDatabase } from '../../lib/db';
-import { isInPriceRange, DEFAULT_PRICE_RANGE, formatPrice } from '../../lib/filters';
-import { analyzeListingWithLLM } from '../../lib/llm-analysis';
-import { MarketplaceListing } from '../../src/types';
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { searchMarketplace } from "../../src/scraper";
+import { getExistingListingIds, insertListing } from "../../lib/db";
+import {
+  isInPriceRange,
+  DEFAULT_PRICE_RANGE,
+  formatPrice,
+} from "../../lib/filters";
+import { analyzeListingWithLLM } from "../../lib/llm-analysis";
 
 // Search queries to run daily (8 AM UTC = 10/11 AM Israel time depending on DST)
 const SEARCH_QUERIES = [
-  { query: 'סירה', description: 'boats' },
-  { query: 'סירת דייג', description: 'fishing boat' }
+  { query: "סירה", description: "boats" },
+  { query: "סירת דייג", description: "fishing boat" },
 ];
 
-const SEARCH_LOCATION = 'telaviv';
+const SEARCH_LOCATION = "telaviv";
 const SEARCH_RADIUS = 250; // km
 
-export default async function handler(
-  req: VercelRequest,
-  res: VercelResponse
-) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Verify cron secret
   const authHeader = req.headers.authorization;
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
-  console.log('🚀 Starting daily boat search...');
+  console.log("🚀 Starting daily boat search...");
   console.log(`Time: ${new Date().toISOString()}`);
 
   try {
-    // Initialize database if needed
-    await initializeDatabase();
+    // RUN ALL SEARCHES IN PARALLEL
+    console.log(`\n⚡ Running ${SEARCH_QUERIES.length} searches in PARALLEL...\n`);
 
-    const results: {
-      query: string;
-      total: number;
-      new: number;
-      inPriceRange: number;
-      notified: string[];
-    }[] = [];
+    const searchResults = await Promise.all(
+      SEARCH_QUERIES.map(async ({ query, description }) => {
+        console.log(`🔍 "${query}" (${description})...`);
 
-    // Run each search query
-    for (const { query, description } of SEARCH_QUERIES) {
-      console.log(`\n🔍 Searching for "${query}" (${description})...`);
+        try {
+          const listings = await searchMarketplace({
+            query,
+            location: SEARCH_LOCATION,
+            radius: SEARCH_RADIUS,
+          });
 
-      try {
-        // Search without descriptions first
-        const listings = await searchMarketplace({
-          query,
-          location: SEARCH_LOCATION,
-          radius: SEARCH_RADIUS
-        });
+          console.log(`✅ "${query}": ${listings.length} listings`);
+          return { query, description, listings, error: null };
+        } catch (error: any) {
+          console.error(`❌ "${query}": ${error?.message}`);
+          return { query, description, listings: [], error: error?.message };
+        }
+      })
+    );
 
-        console.log(`✅ Found ${listings.length} total listings`);
+    // BATCH CHECK: Get ALL listing IDs from ALL searches at once
+    const allListings = searchResults.flatMap((r) => r.listings);
+    const allIds = allListings.map((l) => l.id);
+    const uniqueIds = [...new Set(allIds)]; // Remove duplicates across searches
+    const existingIds = await getExistingListingIds(uniqueIds);
 
-        let newCount = 0;
-        let inRangeCount = 0;
-        const notifiedListings: string[] = [];
+    console.log(`\n📊 Combined results:`);
+    console.log(`   Total listings: ${allListings.length}`);
+    console.log(`   Unique listings: ${uniqueIds.length}`);
+    console.log(`   Already in DB: ${existingIds.size}`);
+    console.log(`   New to process: ${uniqueIds.length - existingIds.size}`);
 
-        // Process each listing
-        for (const listing of listings) {
-          // Check if listing already exists
-          const exists = await listingExists(listing.id);
+    // Get unique new listings (dedupe by ID)
+    const newListingsMap = new Map();
+    const listingQueryMap = new Map<string, string>();
 
-          if (exists) {
-            // Skip existing listings
-            continue;
-          }
+    for (const { query, listings } of searchResults) {
+      for (const listing of listings) {
+        if (!existingIds.has(listing.id) && !newListingsMap.has(listing.id)) {
+          newListingsMap.set(listing.id, listing);
+          listingQueryMap.set(listing.id, query);
+        }
+      }
+    }
 
-          // New listing!
-          newCount++;
-          console.log(`  ✨ NEW: ${listing.title} - ${listing.price}`);
+    const allNewListings = Array.from(newListingsMap.values());
 
-          // Fetch description for new listings
-          console.log(`     Fetching description...`);
-          const detailedListings = await searchMarketplace(
-            { query, location: SEARCH_LOCATION, radius: SEARCH_RADIUS },
+    if (allNewListings.length === 0) {
+      console.log("\n✓ No new listings to process");
+
+      const results = searchResults.map(({ query, listings }) => ({
+        query,
+        total: listings.length,
+        new: 0,
+        inPriceRange: 0,
+        notified: [],
+      }));
+
+      return res.status(200).json({
+        success: true,
+        timestamp: new Date().toISOString(),
+        results,
+      });
+    }
+
+    // PROCESS ALL NEW LISTINGS IN PARALLEL
+    console.log(
+      `\n⚡ Processing ${allNewListings.length} NEW listings in PARALLEL...\n`
+    );
+
+    await Promise.all(
+      allNewListings.map(async (listing, index) => {
+        console.log(`  [${index + 1}/${allNewListings.length}] ${listing.title}`);
+
+        try {
+          // Fetch description
+          const detailedResults = await searchMarketplace(
+            {
+              query: listingQueryMap.get(listing.id) || "",
+              location: SEARCH_LOCATION,
+              radius: SEARCH_RADIUS,
+            },
             { fetchDescriptions: true }
           );
 
-          // Find this specific listing with description
-          const detailedListing = detailedListings.find(l => l.id === listing.id);
-
-          if (detailedListing?.description) {
-            listing.description = detailedListing.description;
-            console.log(`     ✅ Description fetched`);
+          const detailed = detailedResults.find((l) => l.id === listing.id);
+          if (detailed?.description) {
+            listing.description = detailed.description;
           }
 
           // Run LLM analysis
-          console.log(`     Analyzing with LLM...`);
           const analysis = await analyzeListingWithLLM(listing);
-
-          // Add LLM results to listing
           listing.hasParking = analysis.hasParking;
           listing.llm_rating = analysis.rating;
           listing.llm_reason = analysis.reason;
 
-          console.log(`     ✅ LLM Analysis: Rating ${analysis.rating}/10, Parking: ${analysis.hasParking}`);
+          console.log(
+            `     ✅ ${analysis.rating}/10, Parking: ${analysis.hasParking}`
+          );
 
           // Insert into database
-          await insertListing(listing, query);
+          await insertListing(listing, listingQueryMap.get(listing.id) || "");
 
-          // Check if in price range for notification
-          if (isInPriceRange(listing, DEFAULT_PRICE_RANGE.min, DEFAULT_PRICE_RANGE.max)) {
-            inRangeCount++;
-
-            // Log for notification (Discord webhook would go here)
-            console.log(`\n🎯 NOTIFICATION CANDIDATE:`);
-            console.log(`   Title: ${listing.title}`);
-            console.log(`   Price: ${listing.price}`);
-            console.log(`   Location: ${listing.location.city}, ${listing.location.state}`);
-            console.log(`   LLM Rating: ${listing.llm_rating}/10`);
-            console.log(`   Has Parking: ${listing.hasParking ? 'YES' : 'NO'}`);
-            console.log(`   LLM Reason: ${listing.llm_reason}`);
-            console.log(`   URL: ${listing.url}`);
-
-            if (listing.description) {
-              console.log(`   Description: ${listing.description.substring(0, 100)}...`);
-            }
-
-            notifiedListings.push(listing.title);
-
-            // TODO: Send Discord webhook
-            // await sendDiscordNotification(listing);
+          // Send Discord notification if in price range
+          if (
+            isInPriceRange(
+              listing,
+              DEFAULT_PRICE_RANGE.min,
+              DEFAULT_PRICE_RANGE.max
+            )
+          ) {
+            await sendDiscordNotification(listing);
           }
+        } catch (error: any) {
+          console.error(`     ❌ Error: ${error?.message}`);
         }
+      })
+    );
 
-        results.push({
-          query,
-          total: listings.length,
-          new: newCount,
-          inPriceRange: inRangeCount,
-          notified: notifiedListings
-        });
+    console.log(`\n✅ All listings processed!`);
 
-        console.log(`\n📊 Summary for "${query}":`);
-        console.log(`   Total: ${listings.length}`);
-        console.log(`   New: ${newCount}`);
-        console.log(`   In price range (${formatPrice(DEFAULT_PRICE_RANGE.min)}-${formatPrice(DEFAULT_PRICE_RANGE.max)}): ${inRangeCount}`);
+    // Build results summary
+    const results = searchResults.map(({ query, listings }) => {
+      const newForQuery = listings.filter((l) => newListingsMap.has(l.id));
+      const notified = newForQuery.filter((l) =>
+        isInPriceRange(l, DEFAULT_PRICE_RANGE.min, DEFAULT_PRICE_RANGE.max)
+      );
 
-        if (inRangeCount > 0) {
-          console.log(`   📬 Notified: ${notifiedListings.join(', ')}`);
-        }
+      return {
+        query,
+        total: listings.length,
+        new: newForQuery.length,
+        inPriceRange: notified.length,
+        notified: notified.map((l) => l.title),
+      };
+    });
 
-      } catch (error: any) {
-        console.error(`❌ Error searching for "${query}":`, error?.message || error);
-
-        results.push({
-          query,
-          total: 0,
-          new: 0,
-          inPriceRange: 0,
-          notified: []
-        });
-      }
-
-      // Add delay between searches to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 2000));
+    // Log summary
+    for (const r of results) {
+      console.log(`\n📊 "${r.query}":`);
+      console.log(`   Total: ${r.total}, New: ${r.new}, Notified: ${r.inPriceRange}`);
     }
-
-    console.log('\n✅ Daily search completed!');
 
     return res.status(200).json({
       success: true,
       timestamp: new Date().toISOString(),
-      results
+      results,
     });
-
   } catch (error: any) {
-    console.error('❌ Fatal error:', error);
+    console.error("❌ Fatal error:", error);
 
     return res.status(500).json({
       success: false,
-      error: error?.message || 'Unknown error',
-      timestamp: new Date().toISOString()
+      error: error?.message || "Unknown error",
+      timestamp: new Date().toISOString(),
     });
   }
 }
 
 /**
- * Send Discord notification (placeholder for future implementation)
+ * Send Discord notification
  */
-async function sendDiscordNotification(listing: MarketplaceListing): Promise<void> {
-  // TODO: Implement Discord webhook
-  // const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  // if (!webhookUrl) return;
-  //
-  // await fetch(webhookUrl, {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify({
-  //     embeds: [{
-  //       title: listing.title,
-  //       description: listing.description || 'No description',
-  //       url: listing.url,
-  //       color: 0x0099ff,
-  //       fields: [
-  //         { name: 'Price', value: listing.price, inline: true },
-  //         { name: 'Location', value: `${listing.location.city}, ${listing.location.state}`, inline: true }
-  //       ]
-  //     }]
-  //   })
-  // });
+async function sendDiscordNotification(listing: any): Promise<void> {
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.log(`     📬 No webhook URL, skipping Discord notification`);
+    return;
+  }
 
-  console.log(`📬 Would send Discord notification for: ${listing.title}`);
+  try {
+    const embed = {
+      title: listing.title,
+      url: listing.url,
+      color: listing.llm_rating >= 7 ? 0x00ff00 : 0x0099ff, // Green for high ratings
+      fields: [
+        { name: "💰 Price", value: listing.price, inline: true },
+        {
+          name: "📍 Location",
+          value: `${listing.location.city}, ${listing.location.state}`,
+          inline: true,
+        },
+        { name: "⭐ LLM Rating", value: `${listing.llm_rating}/10`, inline: true },
+        {
+          name: "🅿️ Parking",
+          value: listing.hasParking ? "✅ Yes" : "❌ No",
+          inline: true,
+        },
+        { name: "📝 LLM Analysis", value: listing.llm_reason, inline: false },
+      ],
+      timestamp: new Date().toISOString(),
+    };
+
+    if (listing.description) {
+      embed.fields.push({
+        name: "📄 Description",
+        value: listing.description.substring(0, 1000),
+        inline: false,
+      });
+    }
+
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+
+    console.log(`     📬 Discord notification sent!`);
+  } catch (error: any) {
+    console.error(`     ❌ Discord error: ${error?.message}`);
+  }
 }

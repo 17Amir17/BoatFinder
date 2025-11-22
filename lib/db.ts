@@ -21,6 +21,21 @@ export async function listingExists(id: string): Promise<boolean> {
 }
 
 /**
+ * Check which listings exist in the database (batch operation)
+ * Returns a Set of listing IDs that already exist
+ */
+export async function getExistingListingIds(ids: string[]): Promise<Set<string>> {
+  const listings = await prisma.listing.findMany({
+    where: {
+      id: { in: ids }
+    },
+    select: { id: true }
+  });
+
+  return new Set(listings.map(l => l.id));
+}
+
+/**
  * Insert a new listing into the database
  */
 export async function insertListing(
