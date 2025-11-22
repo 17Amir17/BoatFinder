@@ -2,7 +2,7 @@ import { createPool } from '@vercel/postgres';
 import { MarketplaceListing } from '../src/types';
 
 const pool = createPool({
-  connectionString: process.env.POSTGRES_URL_POOLED || process.env.POSTGRES_URL
+  connectionString: process.env.POSTGRES_PRISMA_URL
 });
 
 export interface DBListing extends MarketplaceListing {
