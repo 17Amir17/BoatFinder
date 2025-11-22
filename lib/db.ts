@@ -1,9 +1,7 @@
-import { createPool } from '@vercel/postgres';
+import { createClient } from '@vercel/postgres';
 import { MarketplaceListing } from '../src/types';
 
-const pool = createPool({
-  connectionString: process.env.POSTGRES_PRISMA_URL
-});
+const client = createClient();
 
 export interface DBListing extends MarketplaceListing {
   search_query?: string;
@@ -16,7 +14,8 @@ export interface DBListing extends MarketplaceListing {
  * Check if a listing already exists in the database
  */
 export async function listingExists(id: string): Promise<boolean> {
-  const result = await pool.sql`
+  await client.connect();
+  const result = await client.sql`
     SELECT id FROM listings WHERE id = ${id} LIMIT 1
   `;
   return (result.rowCount || 0) > 0;
@@ -29,9 +28,10 @@ export async function insertListing(
   listing: MarketplaceListing,
   searchQuery: string
 ): Promise<void> {
+  await client.connect();
   const priceNumeric = parsePrice(listing.price);
 
-  await pool.sql`
+  await client.sql`
     INSERT INTO listings (
       id, title, price, price_numeric, strikethrough_price,
       city, state, url, delivery_types,
@@ -75,7 +75,8 @@ export async function insertListing(
  * Get all listings from the database
  */
 export async function getAllListings(): Promise<DBListing[]> {
-  const result = await pool.sql`
+  await client.connect();
+  const result = await client.sql`
     SELECT * FROM listings ORDER BY created_at DESC
   `;
 
@@ -112,7 +113,8 @@ export async function getListingsByPriceRange(
   minPrice: number,
   maxPrice: number
 ): Promise<DBListing[]> {
-  const result = await pool.sql`
+  await client.connect();
+  const result = await client.sql`
     SELECT * FROM listings
     WHERE price_numeric >= ${minPrice}
       AND price_numeric <= ${maxPrice}
@@ -163,7 +165,8 @@ function parsePrice(priceStr: string): number | null {
  * Initialize database (create tables if they don't exist)
  */
 export async function initializeDatabase(): Promise<void> {
-  await pool.sql`
+  await client.connect();
+  await client.sql`
     CREATE TABLE IF NOT EXISTS listings (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -188,15 +191,15 @@ export async function initializeDatabase(): Promise<void> {
     )
   `;
 
-  await pool.sql`
+  await client.sql`
     CREATE INDEX IF NOT EXISTS idx_created_at ON listings(created_at DESC)
   `;
 
-  await pool.sql`
+  await client.sql`
     CREATE INDEX IF NOT EXISTS idx_price_numeric ON listings(price_numeric)
   `;
 
-  await pool.sql`
+  await client.sql`
     CREATE INDEX IF NOT EXISTS idx_is_sold ON listings(is_sold)
   `;
 }
