@@ -1,7 +1,9 @@
 import { createClient } from '@vercel/postgres';
 import { MarketplaceListing } from '../src/types';
 
-const client = createClient();
+const client = createClient({
+  connectionString: process.env.POSTGRES_URL
+});
 
 export interface DBListing extends MarketplaceListing {
   search_query?: string;
@@ -14,7 +16,6 @@ export interface DBListing extends MarketplaceListing {
  * Check if a listing already exists in the database
  */
 export async function listingExists(id: string): Promise<boolean> {
-  await client.connect();
   const result = await client.sql`
     SELECT id FROM listings WHERE id = ${id} LIMIT 1
   `;
@@ -75,7 +76,6 @@ export async function insertListing(
  * Get all listings from the database
  */
 export async function getAllListings(): Promise<DBListing[]> {
-  await client.connect();
   const result = await client.sql`
     SELECT * FROM listings ORDER BY created_at DESC
   `;
@@ -113,7 +113,6 @@ export async function getListingsByPriceRange(
   minPrice: number,
   maxPrice: number
 ): Promise<DBListing[]> {
-  await client.connect();
   const result = await client.sql`
     SELECT * FROM listings
     WHERE price_numeric >= ${minPrice}
@@ -165,7 +164,6 @@ function parsePrice(priceStr: string): number | null {
  * Initialize database (create tables if they don't exist)
  */
 export async function initializeDatabase(): Promise<void> {
-  await client.connect();
   await client.sql`
     CREATE TABLE IF NOT EXISTS listings (
       id TEXT PRIMARY KEY,
