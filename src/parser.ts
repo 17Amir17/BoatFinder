@@ -97,7 +97,7 @@ export function parseMarketplaceListings(html: string): MarketplaceListing[] {
         id: ids[i],
         title: decodeUnicode(titles[i]),
         price: decodeUnicode(prices[i]),
-        strikethrough_price: strikethroughPrices[i] ? decodeUnicode(strikethroughPrices[i]) : undefined,
+        strikethrough_price: strikethroughPrices[i] ? decodeUnicode(strikethroughPrices[i]!) : undefined,
         location: {
           city: decodeUnicode(locations[i].city),
           state: decodeUnicode(locations[i].state)

@@ -14,6 +14,9 @@ export interface MarketplaceListing {
   category_id?: string;
   subtitle?: string;
   description?: string;
+  hasParking?: boolean;
+  llm_rating?: number;
+  llm_reason?: string;
 }
 
 export interface SearchParams {
