@@ -21,10 +21,10 @@ export async function analyzeListingWithLLM(
 
 TARGET CRITERIA:
 - Power Category: עוצמה א (otzma alef / power A) - Israeli boat licensing category
-- Length: Up to 7 meters
-- Engine Power: Up to 150 HP
-- Marina Parking: Must mention marina parking/berth/mooring space (מקום עגינה במרינה)
-- Ideal Price: Around ₪60,000 (flexible, but closer is better)
+- Length: Up to 7 meters (the closes to 7 the better)
+- Engine Power: Up to 150 HP (the closes to 150 the better)
+- Marina Parking: Must mention marina parking/berth/mooring space (מקום עגינה במרינה) CRITICAL!
+- Ideal Price: Around ₪60,000 (flexible, but the closer to ₪60,000 the better)
 
 LISTING TO ANALYZE:
 - Title: ${listing.title}
